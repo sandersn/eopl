@@ -1,5 +1,5 @@
 #lang typed/racket
-(require datatype)
+;; (require datatype)
 ; (define-struct node (kind start end kids))
 ; (define tree
 ;   (node "SourceFile" 0 20
@@ -27,27 +27,25 @@
 ; (display (node-kind (node-at-location tree 6)))
 ; (newline)
 ; (display (node-kind (node-at-location tree 16)))
-(define-datatype Exp
-  [Var (Symbol)]
-  [Lambda ((Listof Symbol) Exp)]
-  [If (Exp Exp Exp)]
-  [App (Exp Exp)])
+(define-struct Var ([name : Symbol]))
+(define-struct Lambda ([parameters : (Listof Symbol)] [body : Exp]))
+(define-struct If ([cond : Exp] [then : Exp] [else : Exp]))
+(define-struct App ([f : Exp] [arg : Exp]))
+(define-type Exp (U Var Lambda If App))
 (: occurs-free? (-> Exp Symbol Boolean))
-(define (occurs-free? tree x)
-  (type-case Exp tree
-             [(Var v) => (eq? v x)]
-             [(Lambda ps e) => (and (not (memq x ps)) (occurs-free? e x))]
-             [(If cond then else) => (if (memf (lambda ([e : Exp]) (occurs-free? e x)) (list cond then else)) #t #f)]
-             [(App e1 e2) => (or (occurs-free? e1 x) (occurs-free? e2 x))]))
+(define/match (occurs-free? tree x)
+  [((Var v) x) (eq? v x)]
+  [((Lambda ps e) x) (and (not (memq x ps)) (occurs-free? e x))]
+  [((If cond then else) x) (if (memf (lambda ([e : Exp]) (occurs-free? e x)) (list cond then else)) #t #f)]
+  [((App e1 e2) x) (or (occurs-free? e1 x) (occurs-free? e2 x))])
 (: occurs-bound? (-> Exp Symbol Boolean))
-(define (occurs-bound? tree x)
-  (type-case Exp tree
-             [(Var _) => #f]
-             [(Lambda ps e) => (or (occurs-bound? e x) (match (memq x ps)
-                                                         [(cons y _) (and (eq? x y) (occurs-free? e y))]
-                                                         [_ #f]))]
-             [(If cond then else) => (if (memf (lambda ([e : Exp]) (occurs-bound? e x)) (list cond then else)) #t #f)]
-             [(App e1 e2) => (or (occurs-bound? e1 x) (occurs-bound? e2 x))]))
+(define/match (occurs-bound? tree x)
+  [((Var _) x) #f]
+  [((Lambda ps e) x) (or (occurs-bound? e x) (match (memq x ps)
+                                              [(cons y _) (and (eq? x y) (occurs-free? e y))]
+                                              [_ #f]))]
+  [((If cond then else) x) (if (memf (lambda ([e : Exp]) (occurs-bound? e x)) (list cond then else)) #t #f)]
+  [((App e1 e2) x) (or (occurs-bound? e1 x) (occurs-bound? e2 x))])
 (: test (All (T U ...) (-> (-> U ... U T) (-> T U ... U Void))))
 (define (test f)
   (λ (expect . xs)
